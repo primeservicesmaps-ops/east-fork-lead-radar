@@ -1,0 +1,84 @@
+name: Refresh East Fork Lead Radar
+
+on:
+  schedule:
+    - cron: '15 12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-east-fork-leads
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Search public news RSS and add candidates
+        run: |
+          python - <<'PY'
+          import datetime as dt, email.utils, html, json, re, time, urllib.parse, urllib.request, xml.etree.ElementTree as ET
+          from pathlib import Path
+          now=dt.datetime.now(dt.timezone.utc); today=now.date().isoformat(); path=Path('leads.json')
+          queries=[
+            '"DFW" switchgear replacement electrical facility',
+            '"Dallas Fort Worth" commercial electrical retrofit renovation',
+            '"North Texas" industrial facility expansion electrical upgrade',
+            '"DFW" manufacturing plant expansion existing facility',
+            '"Dallas" generator ATS electrical upgrade commercial facility',
+            '"North Texas" industrial lighting retrofit facility',
+            '"DFW" tenant improvement relocation electrical existing building',
+            '"North Texas" electrical maintenance shutdown industrial plant',
+            '"Dallas Fort Worth" electrical panel upgrade commercial building',
+            '"DFW" facility modernization controls automation electrical',
+            '"North Texas" municipal switchgear replacement electrical bid']
+          elec=re.compile(r'\b(electri\w*|switchgear|panelboard|transformer|generator|ATS|lighting retrofit|power upgrade|controls|automation|EV charging|shutdown|maintenance|retrofit|tenant improvement|equipment power|plant expansion|facility expansion|renovation|modernization|capacity upgrade|code correction)\b',re.I)
+          existing=re.compile(r'\b(existing|renovat\w*|retrofit|upgrade|replacement|moderni[sz]\w*|expansion|expand\w*|tenant improvement|relocat\w*|plant|factory|manufactur\w*|facility|industrial|commercial|shutdown|maintenance|switchgear|panelboard|generator|lighting)\b',re.I)
+          exclude=re.compile(r'\b(residential|single[- ]family|ground[- ]up|groundbreaking|new[- ]build|new construction|home builder|housing development|subdivision)\b',re.I)
+          clean=lambda s: re.sub(r'\s+',' ',html.unescape(re.sub(r'<[^>]+>',' ',s or ''))).strip()
+          norm=lambda s: re.sub(r'[^a-z0-9]+',' ',(s or '').lower()).strip()
+          def parsedate(s):
+            try:
+              d=email.utils.parsedate_to_datetime(s)
+              return (d if d.tzinfo else d.replace(tzinfo=dt.timezone.utc)).astimezone(dt.timezone.utc)
+            except Exception: return None
+          try:
+            leads=json.loads(path.read_text(encoding='utf-8'))
+            if not isinstance(leads,list): leads=[]
+          except Exception: leads=[]
+          urls={x.get('source','').strip() for x in leads if x.get('source')}; titles={norm(x.get('project','')) for x in leads if x.get('project')}; added=[]
+          for q in queries:
+            rss='https://news.google.com/rss/search?'+urllib.parse.urlencode({'q':q,'hl':'en-US','gl':'US','ceid':'US:en'})
+            try:
+              req=urllib.request.Request(rss,headers={'User-Agent':'EastForkLeadRadar/1.0'})
+              root=ET.fromstring(urllib.request.urlopen(req,timeout=15).read())
+            except Exception as e:
+              print('Skipped RSS query:',q,str(e)); continue
+            for item in root.findall('.//item'):
+              title=clean(item.findtext('title')); link=(item.findtext('link') or '').strip(); desc=clean(item.findtext('description')); date=parsedate(item.findtext('pubDate')); searchable=title+' '+desc; key=norm(title)
+              if not title or not link or link in urls or key in titles: continue
+              if not elec.search(searchable) or not existing.search(searchable) or exclude.search(searchable): continue
+              if date and (now-date).days>30: continue
+              src=item.find('source'); publisher=clean(src.text if src is not None else '')
+              added.append({'id':'news-'+re.sub(r'[^a-z0-9]+','-',key).strip('-')[:65],'priority':'WATCH','project':title,'company':publisher or 'Company not confirmed — verify source','city':'DFW / North Texas — verify location','address':'Not listed in article','type':'Public-source facility/electrical opportunity — qualify before outreach','scope':desc[:700] or 'Open source and verify that this is work at an existing DFW-area facility.','timing':date.strftime('%b %d, %Y') if date else 'Timing not confirmed','contact':'Not listed in source','title':'Not listed','phone':'','email':'','website':'','source':link,'discovered':date.date().isoformat() if date else today,'reason':'Automated public-news match only. Verify DFW location, existing-facility scope, project status, and decision-maker before outreach.'})
+              urls.add(link); titles.add(key)
+            time.sleep(.4)
+          if added:
+            path.write_text(json.dumps((added+leads)[:150],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+            print(f'Added {len(added)} new WATCH candidates.')
+          else: print('No new qualifying public-news candidates; leads.json unchanged.')
+          PY
+
+      - name: Commit lead changes
+        run: |
+          if git diff --quiet -- leads.json; then echo 'No updates to commit.'; exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+users.noreply.github.com'
+          git add leads.json
+          git commit -m 'Refresh public DFW electrical lead candidates'
+          git push
