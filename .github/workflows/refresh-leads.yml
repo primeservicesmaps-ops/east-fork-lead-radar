@@ -1,4 +1,3 @@
-
 name: Refresh East Fork Lead Radar
 
 on:
@@ -21,6 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Search targeted DFW facility opportunities
+        shell: bash
         run: |
           python - <<'PY'
           import datetime as dt, email.utils, html, json, re, time, urllib.parse, urllib.request, xml.etree.ElementTree as ET
@@ -30,28 +30,28 @@ jobs:
           today = now.date().isoformat()
           path = Path('leads.json')
           queries = [
-            'Dallas OR Fort Worth commercial building electrical retrofit OR upgrade',
-            'DFW tenant improvement electrical contractor existing building',
-            'Dallas Fort Worth warehouse electrical upgrade lighting retrofit',
-            'North Texas manufacturing plant equipment power electrical upgrade',
-            'DFW industrial facility switchgear replacement transformer generator',
-            'Dallas Fort Worth facility expansion existing plant electrical',
-            'North Texas factory shutdown electrical maintenance contractor',
-            'Dallas commercial building panel replacement electrical renovation',
-            'DFW hospital school district electrical switchgear replacement bid',
-            'North Texas city school district electrical services solicitation',
-            'Dallas Fort Worth industrial electrical service repair outage',
-            'DFW business relocation existing facility electrical tenant finish out',
-            'Texas public procurement electrical maintenance retrofit Dallas Tarrant Collin Denton',
-            'DFW data center electrical maintenance UPS generator switchgear retrofit',
-            'North Texas commercial HVAC controls lighting power modernization',
-            'Dallas Fort Worth facility renovation electrical permit existing building',
-            'Tarrant County electrical services bid switchgear generator lighting',
-            'Collin County electrical maintenance retrofit bid commercial',
+            '"electrical maintenance" Dallas Fort Worth bid',
+            '"electrical repair" Dallas Fort Worth commercial facility',
+            '"switchgear repair" Dallas Texas solicitation',
+            '"switchgear replacement" Fort Worth existing facility',
+            '"electrical services" maintenance contract Dallas county',
+            'DFW commercial electrical panel replacement retrofit',
+            'North Texas industrial plant electrical shutdown maintenance',
+            'Dallas Fort Worth generator ATS UPS maintenance repair',
+            'DFW warehouse lighting retrofit electrical upgrade',
+            'Dallas Fort Worth tenant improvement electrical existing building',
+            'Tarrant County electrical maintenance bid',
+            'Dallas County electrical repair services solicitation',
+            'Collin County electrical services maintenance bid',
+            'Denton County electrical repair maintenance contract',
+            'North Texas manufacturing equipment relocation electrical power',
+            'DFW commercial facility electrical renovation replacement',
+            'Dallas Fort Worth industrial electrical outage repair',
+            'DFW hospital school district switchgear maintenance bid',
           ]
-          electrical = re.compile(r'\b(electric\w*|switchgear|panelboard|breaker|transformer|generator|ATS|UPS|lighting|power|electrical service|controls|automation|retrofit|maintenance|shutdown|tenant improvement|equipment|plant|facility|commercial building|warehouse|manufactur\w*|hospital|school district|municipal|renovat\w*|moderni[sz]\w*|expansion|replacement|repair|outage|solicitation|bid|contractor)\b', re.I)
-          existing_or_service = re.compile(r'\b(existing|renovat\w*|retrofit|upgrade|replacement|moderni[sz]\w*|expansion|expand\w*|tenant improvement|relocat\w*|plant|factory|manufactur\w*|facility|industrial|commercial|shutdown|maintenance|switchgear|panelboard|generator|lighting|repair|service|outage|renovation|remodel|equipment|bid|solicitation|contract)\b', re.I)
-          exclude = re.compile(r'\b(residential|single[- ]family|homeowner|house remodel|ground[- ]up|groundbreaking|new[- ]build|new construction|home builder|housing development|subdivision|apartments? new construction|residential construction|greenfield|new facility construction)\b', re.I)
+          electrical = re.compile(r'\b(electric\w*|switchgear|panelboard|breaker|transformer|generator|ATS|UPS|lighting|power|electrical service|controls|retrofit|maintenance|shutdown|tenant improvement|equipment|plant|facility|commercial building|warehouse|manufactur\w*|hospital|school district|municipal|renovat\w*|moderni[sz]\w*|replacement|repair|outage|solicitation|bid|contractor)\b', re.I)
+          service_work = re.compile(r'\b(repair|maintenance|replacement|retrofit|upgrade|renovat\w*|moderni[sz]\w*|shutdown|outage|tenant improvement|relocat\w*|service contract|service agreement|troubleshoot\w*|switchgear|panelboard|generator|lighting|bid|solicitation|equipment installation)\b', re.I)
+          exclude = re.compile(r'\b(residential|single[- ]family|homeowner|house remodel|ground[- ]up|groundbreaking|new[- ]build|new construction|home builder|housing development|subdivision|apartments? new construction|residential construction|greenfield|new facility construction|market size|market share|industry outlook|market forecast|market growth report|market research)\b', re.I)
           clean = lambda s: re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]+>', ' ', s or ''))).strip()
           norm = lambda s: re.sub(r'[^a-z0-9]+', ' ', (s or '').lower()).strip()
 
@@ -77,7 +77,7 @@ jobs:
           for q in queries:
             rss = 'https://news.google.com/rss/search?' + urllib.parse.urlencode({'q': q + ' when:30d', 'hl': 'en-US', 'gl': 'US', 'ceid': 'US:en'})
             try:
-              req = urllib.request.Request(rss, headers={'User-Agent': 'EastForkLeadRadar/2.0'})
+              req = urllib.request.Request(rss, headers={'User-Agent': 'EastForkLeadRadar/2.1'})
               root = ET.fromstring(urllib.request.urlopen(req, timeout=18).read())
             except Exception as e:
               errors += 1
@@ -94,7 +94,7 @@ jobs:
 
               if not title or not link or link in urls or not key or key in titles:
                 continue
-              if not electrical.search(searchable) or not existing_or_service.search(searchable) or exclude.search(searchable):
+              if not electrical.search(searchable) or not service_work.search(searchable) or exclude.search(searchable):
                 continue
               if pubdate and (now - pubdate).days > 31:
                 continue
@@ -108,7 +108,7 @@ jobs:
                 'company': publisher or 'Company not confirmed — verify source',
                 'city': 'DFW / North Texas — verify location',
                 'address': 'Not listed in article',
-                'type': 'Existing-facility / electrical service candidate — verify scope',
+                'type': 'Potential existing-facility electrical service — verify scope',
                 'scope': desc[:900] or 'Open the source and verify existing-facility electrical scope.',
                 'timing': pubdate.strftime('%b %d, %Y') if pubdate else 'Timing not confirmed',
                 'contact': 'Not listed in source',
@@ -127,31 +127,43 @@ jobs:
 
           if added:
             path.write_text(json.dumps((added + leads)[:200], ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-            print(f'Added {len(added)} new WATCH candidates from expanded public-news searches.')
+            print(f'Added {len(added)} new WATCH candidates from service-focused public-news searches.')
           else:
-            print('No new qualifying public-news candidates; leads.json unchanged.')
+            print('No new qualifying service-work candidates; leads.json unchanged.')
 
           print(f'Queries attempted: {len(queries)}; RSS query errors: {errors}; candidates added: {len(added)}.')
           PY
 
       - name: Commit lead changes
-      shell: bash
-      run: |
-        if git diff --quiet -- leads.json; then
-          echo "No lead updates to commit."
-          exit 0
-        fi
+        shell: bash
+        run: |
+          if git diff --quiet -- leads.json; then
+            echo "No lead updates to commit."
+            exit 0
+          fi
 
-        cp leads.json /tmp/generated-leads.json
-        git config user.name 'github-actions[bot]'
-        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-        git fetch origin main
-        git reset --hard origin/main
-        cp /tmp/generated-leads.json leads.json
-        git add leads.json
-        if git diff --cached --quiet; then
-          echo "No new lead changes after syncing main."
-          exit 0
-        fi
-        git commit -m 'Refresh East Fork electrical leads'
-        git push origin HEAD:main
+          cp leads.json /tmp/generated-leads.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/generated-leads.json leads.json
+            git add leads.json
+
+            if git diff --cached --quiet; then
+              echo "No new lead changes after syncing main."
+              exit 0
+            fi
+
+            git commit -m 'Refresh East Fork electrical leads'
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+
+            echo "Push attempt $attempt failed; retrying after syncing main."
+          done
+
+          echo "Unable to push after 3 attempts."
+          exit 1
