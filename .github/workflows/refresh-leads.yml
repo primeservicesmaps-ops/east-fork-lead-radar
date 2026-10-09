@@ -51,7 +51,7 @@ jobs:
           ]
           electrical = re.compile(r'\b(electric\w*|switchgear|panelboard|breaker|transformer|generator|ATS|UPS|lighting|power|electrical service|controls|automation|retrofit|maintenance|shutdown|tenant improvement|equipment|plant|facility|commercial building|warehouse|manufactur\w*|hospital|school district|municipal|renovat\w*|moderni[sz]\w*|expansion|replacement|repair|outage|solicitation|bid|contractor)\b', re.I)
           existing_or_service = re.compile(r'\b(existing|renovat\w*|retrofit|upgrade|replacement|moderni[sz]\w*|expansion|expand\w*|tenant improvement|relocat\w*|plant|factory|manufactur\w*|facility|industrial|commercial|shutdown|maintenance|switchgear|panelboard|generator|lighting|repair|service|outage|renovation|remodel|equipment|bid|solicitation|contract)\b', re.I)
-          exclude = re.compile(r'\b(residential|single[- ]family|homeowner|house remodel|ground[- ]up|groundbreaking|new[- ]build|new construction|home builder|housing development|subdivision|apartments? new construction)\b', re.I)
+          exclude = re.compile(r'\b(residential|single[- ]family|homeowner|house remodel|ground[- ]up|groundbreaking|new[- ]build|new construction|home builder|housing development|subdivision|apartments? new construction|residential construction|greenfield|new facility construction)\b', re.I)
           clean = lambda s: re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]+>', ' ', s or ''))).strip()
           norm = lambda s: re.sub(r'[^a-z0-9]+', ' ', (s or '').lower()).strip()
 
